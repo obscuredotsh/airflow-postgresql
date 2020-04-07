@@ -1,0 +1,125 @@
+---
+
+- hosts: localhost
+  become: true
+  vars:
+    SRC: /home/ubuntu/ansible-airflow
+    username: airfi
+    INST_DIR: /home/airflow
+  tasks:  
+
+    - name: SYSTEM - Create airfi user
+      tags: system-user
+      user:
+        name: '{{ username }}'
+        state: present
+        shell: /bin/bash
+        createhome: yes
+
+    - name: check if airflow home dir folder exists
+      stat:
+        path: '{{ INST_DIR }}'
+      register: af_home
+
+    - name: Create airflow home dir if not existing
+      file:
+        path: '{{ INST_DIR }}'
+        state: directory
+      when: not af_home.stat.exists
+
+    - name: Updating Repos
+      apt: 
+        update_cache=yes force_apt_get=yes cache_valid_time=3600
+
+    - name: Airflow | Install | Basic Packages
+      apt:
+        name: "{{ packages }}"
+      vars:
+        packages:
+          - python-setuptools
+          - python-pip
+          - postgresql
+          - postgresql-contrib
+          - libmysqlclient-dev
+          - libssl-dev
+          - libkrb5-dev
+          - libsasl2-dev
+          - python-psycopg2
+ 
+    - name: Airflow | Install | Upgrade pip
+      shell: "pip install --upgrade pip"
+    
+    - name: Airflow | Install | Upgrade setuptools
+      shell: "pip install --upgrade setuptools"
+    
+    - name: Airflow | Install | With pip
+      pip:
+        name: apache-airflow
+        version: 1.10.9
+      environment:
+        AIRFLOW_HOME: "{{ INST_DIR }}"
+
+    - name: Copying sql file
+      copy: 
+        src: "{{ SRC }}/airflow.sql"
+        dest: /tmp/airflow.sql
+    
+    - name: Importing sql
+      shell: psql -f /tmp/airflow.sql
+      become: true
+      become_user: postgres
+
+    - name: Copying updated postgresql file
+      copy: 
+        src: "{{ SRC }}/pg_hba.conf"
+        dest: /etc/postgresql/10/main/pg_hba.conf
+ 
+    - name: Service postgres restart
+      service:
+        name: postgresql
+        state: restarted
+
+    - name: Copying updated postgresql file
+      copy:
+        src: "{{ SRC }}/airflow.cfg"
+        dest: "{{ INST_DIR }}/airflow.cfg"
+
+    - name: Initialising DB 
+      shell: airflow initdb
+      become: yes
+      become_user: airfi
+#      environment:
+#        AIRFLOW_HOME: {{ SRC }}/airflow
+
+    - name: Installing RabitMQ
+      apt:
+        name: rabbitmq-server
+        state: present
+
+    - name: Updating rabbitmq file
+      shell: sed -i s/#NODE_IP_ADDRESS=127.0.0.1/NODE_IP_ADDRESS=0.0.0.0/g /etc/rabbitmq/rabbitmq-env.conf
+
+    - name: Service rabbitmq-server restart
+      service:
+        name: rabbitmq-server
+        state: restarted
+
+    - name: Airflow | Install | With pip
+      pip:
+        name: celery
+
+    - name: create a dags folder in airflow home directory
+      stat:
+        path: "{{ INST_DIR }}/dags/"
+      register: dag_home
+
+    - name: Create project home dir if not existing
+      file:
+        path: "{{ INST_DIR }}/dags/"
+        state: directory
+      when: not dag_home.stat.exists
+
+    - name: Initialising apps
+      shell: airflow webserver -D ; airflow scheduler -D ; airflow worker -D
+      become: yes
+      become_user: airfi
