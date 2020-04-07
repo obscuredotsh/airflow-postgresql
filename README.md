@@ -1,6 +1,5 @@
 # airflow-postgresql
 Airflow setup with amalgamation of postgresql &amp; rabbitmq
-<<<<<<< HEAD
 
 Requirements
 ------------
@@ -27,4 +26,3 @@ Author Information
  `Devops Engineer`
  
  `prateerickaien@gmail.com`
-=======
